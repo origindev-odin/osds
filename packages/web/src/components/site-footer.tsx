@@ -12,7 +12,9 @@ export function SiteFooter(props: {
           <ul className="footer-cats">
             {props.categories.map((category) => (
               <li key={category.slug}>
-                <a href={`/${category.slug}`}>{category.name}</a>
+                <a href={`/${category.slug}`}>
+                  {category.name} ({category.publishedCount})
+                </a>
               </li>
             ))}
           </ul>

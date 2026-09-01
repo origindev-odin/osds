@@ -1,34 +1,16 @@
-import { ListingTile, type ListingTileProps } from "./listing-tile";
+import type { ReactNode } from "react";
 
 /**
- * Placement region: a Featured heading plus ordinary tiles. Omit entirely when
- * there is nobody to place (locked unsold / no featuredPlacement). No gold,
- * no restyle, no "Sponsored."
+ * Featured is a placement region. Ordinary ListingTile children go inside.
+ * Omit this component entirely when there is nothing to show (locked unsold).
  */
-export function FeaturedBand(props: { readonly listings: readonly ListingTileProps[] }) {
-  if (props.listings.length === 0) return null;
-
+export function FeaturedBand(props: { readonly children: ReactNode }) {
   return (
     <section className="featured-band" aria-labelledby="featured-heading">
-      <h2 className="band-heading" id="featured-heading">
+      <h2 id="featured-heading" className="band-heading">
         Featured
       </h2>
-      <ul className="listing-grid">
-        {props.listings.map((listing) => (
-          <li key={listing.href ?? listing.name}>
-            <ListingTile
-              href={listing.href}
-              name={listing.name}
-              entitlementStatus={listing.entitlementStatus}
-              tier={listing.tier}
-              categories={listing.categories}
-              locality={listing.locality}
-              provenance={listing.provenance}
-              headingLevel={listing.headingLevel}
-            />
-          </li>
-        ))}
-      </ul>
+      {props.children}
     </section>
   );
 }
