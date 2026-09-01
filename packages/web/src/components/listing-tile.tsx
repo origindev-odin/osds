@@ -1,6 +1,7 @@
 import { resolvePublicRender } from "@osds/core";
 import type { EntitlementStatus } from "@osds/core";
-import { logoInitials, provenanceLine } from "../lib/provenance";
+import { logoInitials } from "../lib/logo-initials";
+import type { ProvenanceLabel } from "../lib/provenance";
 
 export interface ListingTileProps {
   /** Listing detail link, or null to render the name unlinked. */
@@ -9,41 +10,42 @@ export interface ListingTileProps {
   readonly entitlementStatus: EntitlementStatus;
   /** Tier name; shown only when the §6.5 resolver says the badge is visible. */
   readonly tier: string | null;
-  /** Listing status: claimed → owner-verified, else added by editor. */
-  readonly listingStatus?: string | null;
-  /** Category names, shown with locality. Omit to hide. */
-  readonly categories?: readonly string[];
-  /** Locality, shown after category. Omit or pass null to hide. */
-  readonly locality?: string | null;
+  readonly categoryName: string | null;
+  readonly locality: string | null;
+  readonly provenance: ProvenanceLabel;
+  /** When true, hatch shows initials; otherwise the word "Logo". Never an <img>. */
+  readonly hasLogo: boolean;
 }
 
 /**
  * One listing tile. Same component in the Featured band, category remainder,
- * and search. The tier badge is decided by resolvePublicRender — never a
- * Featured label on the tile. Logo placeholder is identity, not a perk.
+ * and search. The tier badge is decided by the §6.5 resolver here.
  */
 export function ListingTile(props: ListingTileProps) {
   const { badge } = resolvePublicRender(props.entitlementStatus);
   const showBadge = badge === "tier" && props.tier !== null;
-  const meta = [props.categories?.[0], props.locality].filter(
-    (part): part is string => part !== undefined && part !== null && part !== "",
+  const hatch = props.hasLogo ? logoInitials(props.name) : "Logo";
+  const meta = [props.categoryName, props.locality].filter(
+    (part): part is string => part !== null && part.trim() !== "",
   );
-  const initials = logoInitials(props.name);
+
+  const name =
+    props.href !== null ? <a href={props.href}>{props.name}</a> : props.name;
 
   return (
     <li className="listing-tile">
       <div className="logo-ph" aria-hidden="true">
-        {initials}
+        {hatch}
       </div>
       <div className="listing-tile-body">
-        <div className="listing-tile-top">
-          <h3 className="listing-name">
-            {props.href !== null ? <a href={props.href}>{props.name}</a> : props.name}
-          </h3>
-          {showBadge ? <span className="tier-badge">{props.tier}</span> : null}
-        </div>
+        <p className="listing-name">{name}</p>
         {meta.length > 0 ? <p className="meta">{meta.join(" · ")}</p> : null}
-        <p className="trust">{provenanceLine(props.listingStatus)}</p>
+        {showBadge ? (
+          <div className="badge-row">
+            <span className="tier-badge">{props.tier}</span>
+          </div>
+        ) : null}
+        <p className="trust">{props.provenance}</p>
       </div>
     </li>
   );
