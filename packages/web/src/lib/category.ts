@@ -1,28 +1,32 @@
 import { sql } from "@osds/db";
 import type { EntitlementStatus } from "@osds/core";
 import { getDb } from "./db";
+import { listingHasLogo } from "./media";
+import { provenanceLabel } from "./provenance";
+import type { ListingClaimStatus, ProvenanceLabel } from "./provenance";
 
 interface ListingRow {
   slug: string;
   name: string;
   locality: string | null;
-  status: string | null;
+  status: ListingClaimStatus;
+  owner_user_id: string | null;
+  media: unknown;
   listing_tier: string | null;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
-  category_names: string[] | null;
 }
 
 export interface CategoryListing {
   readonly slug: string;
   readonly name: string;
   readonly locality: string | null;
-  readonly listingStatus: string | null;
-  readonly categories: readonly string[];
   /** For the §6.5 resolver; `none` when the listing has no entitlement row. */
   readonly entitlementStatus: EntitlementStatus;
   /** Tier name to show *if* the resolver says the badge is visible. */
   readonly tier: string | null;
+  readonly provenance: ProvenanceLabel;
+  readonly hasLogo: boolean;
 }
 
 export interface CategoryPage {
@@ -31,6 +35,19 @@ export interface CategoryPage {
   readonly listings: readonly CategoryListing[];
 }
 
+/**
+ * The category page data for this tenant, or null when the category slug does
+ * not exist (-> 404). A category that exists but has no published listings
+ * returns an empty `listings` array.
+ *
+ * Same tenancy pattern as `getPublishedListing`: one transaction that sets
+ * `app.tenant_id` first (transaction-local), so RLS on categories /
+ * listing_categories / listings / entitlements is enforced for `osds_app`.
+ *
+ * Featured-placement ordering is applied by the caller with the §6.5 resolver;
+ * here the rows come back name-ordered so the caller's partition stays
+ * alphabetical within each group.
+ */
 export async function getCategoryPage(
   tenantId: string,
   categorySlug: string,
@@ -53,10 +70,11 @@ export async function getCategoryPage(
           l.name,
           l.locality,
           l.status,
+          l.owner_user_id,
+          l.media,
           l.tier         as listing_tier,
           ent.status     as entitlement_status,
-          ent.tier       as entitlement_tier,
-          cats.names     as category_names
+          ent.tier       as entitlement_tier
         from listings l
         join listing_categories lc
           on lc.tenant_id = l.tenant_id and lc.listing_id = l.id
@@ -65,13 +83,9 @@ export async function getCategoryPage(
          and c.id = lc.category_id
          and c.slug = ${categorySlug}
         left join lateral (
-          select array_agg(oc.name order by oc.name) as names
-          from listing_categories x
-          join categories oc
-            on oc.tenant_id = x.tenant_id and oc.id = x.category_id
-          where x.tenant_id = l.tenant_id and x.listing_id = l.id
-        ) cats on true
-        left join lateral (
+          -- The listing's current entitlement. The partial unique index allows
+          -- at most one non-terminal row; this ordering also picks sensibly if a
+          -- terminal (expired / canceled) row sits alongside it.
           select e.status, e.tier
           from entitlements e
           where e.tenant_id = l.tenant_id and e.listing_id = l.id
@@ -99,10 +113,10 @@ export async function getCategoryPage(
           slug: r.slug,
           name: r.name,
           locality: r.locality,
-          listingStatus: r.status,
-          categories: r.category_names ?? [],
           entitlementStatus: r.entitlement_status ?? "none",
           tier: r.entitlement_tier ?? r.listing_tier,
+          provenance: provenanceLabel(r.status, r.owner_user_id),
+          hasLogo: listingHasLogo(r.media),
         })),
       };
     });
