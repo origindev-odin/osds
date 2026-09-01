@@ -1,23 +1,16 @@
 /**
- * Spec §4.1.1 trust display. Provenance is a text line, never a badge.
- * Claimed listings are owner-verified; everything else is added by editor.
+ * Public provenance line (spec §4.1.1). Claimed listings are owner-verified;
+ * unclaimed (and anything else) are added by editor. `owner_user_id` is a
+ * second signal: an assigned owner is treated as claimed even if status lags.
  */
-export type ProvenanceLine = "owner-verified" | "added by editor";
+export type ProvenanceLabel = "owner-verified" | "added by editor";
 
-export function provenanceLine(status: string | null | undefined): ProvenanceLine {
-  return status === "claimed" ? "owner-verified" : "added by editor";
-}
+export type ListingClaimStatus = "unclaimed" | "claimed" | "suspended";
 
-/** Two-letter initials for the tile logo hatch when no image exists. */
-export function logoInitials(name: string): string {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter((p) => p.length > 0);
-  if (parts.length === 0) return "Logo";
-  if (parts.length === 1) {
-    const word = parts[0]!;
-    return word.slice(0, 2).toUpperCase();
-  }
-  return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
+export function provenanceLabel(
+  status: ListingClaimStatus,
+  ownerUserId: string | null,
+): ProvenanceLabel {
+  if (status === "claimed" || ownerUserId !== null) return "owner-verified";
+  return "added by editor";
 }

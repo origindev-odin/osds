@@ -1,24 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { logoInitials, provenanceLine } from "./provenance";
+import { describe, it, expect } from "vitest";
+import { provenanceLabel } from "./provenance";
 
-describe("provenanceLine", () => {
-  it("marks claimed listings as owner-verified", () => {
-    expect(provenanceLine("claimed")).toBe("owner-verified");
+describe("provenanceLabel", () => {
+  it("claimed listings are owner-verified", () => {
+    expect(provenanceLabel("claimed", null)).toBe("owner-verified");
   });
 
-  it("marks everything else as added by editor", () => {
-    expect(provenanceLine("unclaimed")).toBe("added by editor");
-    expect(provenanceLine("suspended")).toBe("added by editor");
-    expect(provenanceLine(null)).toBe("added by editor");
-  });
-});
-
-describe("logoInitials", () => {
-  it("uses two words when present", () => {
-    expect(logoInitials("Belmont Ave Plumbing")).toBe("BA");
+  it("unclaimed listings are added by editor", () => {
+    expect(provenanceLabel("unclaimed", null)).toBe("added by editor");
   });
 
-  it("falls back for a single token", () => {
-    expect(logoInitials("Plumbers")).toBe("PL");
+  it("an owner_user_id counts as owner-verified", () => {
+    expect(provenanceLabel("unclaimed", "usr_abc")).toBe("owner-verified");
+  });
+
+  it("suspended without an owner is added by editor", () => {
+    expect(provenanceLabel("suspended", null)).toBe("added by editor");
   });
 });
