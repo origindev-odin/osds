@@ -1,13 +1,20 @@
 import { notFound } from "next/navigation";
 import { resolvePublicRender } from "@osds/core";
-import { provenanceLine } from "../../../lib/provenance";
 import { getPublishedListing } from "../../../lib/listing";
 import { resolveTenantId } from "../../../lib/tenant";
 
+// Depends on the Host header and a per-request database read - never prerendered.
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ category: string; slug: string }>;
+}
+
+function descriptionParagraphs(text: string): string[] {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0);
 }
 
 export default async function ListingPage({ params }: PageProps) {
@@ -19,87 +26,132 @@ export default async function ListingPage({ params }: PageProps) {
   const listing = await getPublishedListing(tenantId, category, slug);
   if (listing === null) notFound();
 
+  // §6.5: the resolver owns badge, featured, and perks. Do not re-derive them.
   const render = resolvePublicRender(listing.entitlementStatus);
   const tierBadge = render.badge === "tier" ? listing.tier : null;
   const fullPerks = render.perks === "full";
-  const gallerySlots = [0, 1, 2, 3];
+  const meta = [listing.routeCategoryName, listing.locality].filter(
+    (part): part is string => part !== null && part.trim() !== "",
+  );
+  const aboutBlocks =
+    listing.description !== null ? descriptionParagraphs(listing.description) : [];
 
   return (
-    <>
+    <main id="main" className="wrap site-main">
       <nav aria-label="Breadcrumb">
         <ol className="breadcrumbs">
           <li>
             <a href="/">Home</a>
           </li>
           <li>
-            <a href={`/${category}`}>{listing.categoryNames[0] ?? category}</a>
+            <a href={`/${category}`}>{listing.routeCategoryName}</a>
           </li>
           <li>{listing.name}</li>
         </ol>
       </nav>
 
-      <h1>{listing.name}</h1>
-      {tierBadge !== null ? <p className="badge-row"><span className="tier-badge">{tierBadge}</span></p> : null}
-      <p className="trust">{provenanceLine(listing.listingStatus)}</p>
-      {listing.categoryNames.length > 0 || listing.locality !== null ? (
-        <p className="meta">
-          {[listing.categoryNames.join(", "), listing.locality].filter(Boolean).join(" · ")}
-        </p>
-      ) : null}
+      <div className="listing-layout">
+        <div>
+          <div className="listing-identity">
+            <div className="name-row">
+              <h1>{listing.name}</h1>
+              {tierBadge !== null ? <span className="tier-badge">{tierBadge}</span> : null}
+            </div>
+            {meta.length > 0 ? <p className="meta">{meta.join(" · ")}</p> : null}
+            <p className="trust">{listing.provenance}</p>
+          </div>
 
-      {fullPerks ? (
-        <div className="hero-ph" aria-hidden="true">
-          Hero
-        </div>
-      ) : null}
-
-      {listing.address.length > 0 ? (
-        <address>
-          {listing.address.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </address>
-      ) : null}
-
-      {listing.phone !== null ? (
-        <p>
-          <a href={`tel:${listing.phone}`}>{listing.phone}</a>
-        </p>
-      ) : null}
-
-      {listing.website !== null ? (
-        <p>
-          <a href={listing.website} rel="nofollow noopener noreferrer">
-            {listing.website}
-          </a>
-        </p>
-      ) : null}
-
-      {fullPerks ? (
-        <>
-          <section className="photo-gallery-block">
-            <h2>Photos</h2>
-            <ul className="photo-gallery">
-              {gallerySlots.map((_, i) => (
-                <li key={i}>
-                  <div className="photo-ph" aria-hidden="true">
+          {fullPerks ? (
+            <>
+              <div className="hero-ph" aria-hidden="true">
+                Cover photo
+              </div>
+              <div className="photo-gallery-block">
+                <h2>Photos</h2>
+                <ul className="photo-gallery">
+                  <li className="photo-ph" aria-hidden="true">
                     Photo
+                  </li>
+                  <li className="photo-ph" aria-hidden="true">
+                    Photo
+                  </li>
+                  <li className="photo-ph" aria-hidden="true">
+                    Photo
+                  </li>
+                  <li className="photo-ph" aria-hidden="true">
+                    Photo
+                  </li>
+                </ul>
+              </div>
+              <section>
+                <h2>Description / About</h2>
+                {aboutBlocks.length > 0 ? (
+                  <div className="prose">
+                    {aboutBlocks.map((block, index) => (
+                      <p key={index}>{block}</p>
+                    ))}
                   </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+                ) : (
+                  <div className="hero-ph" aria-hidden="true">
+                    About
+                  </div>
+                )}
+              </section>
+            </>
+          ) : null}
 
-          <section>
-            <h2>Description / About</h2>
-            {listing.description !== null && listing.description.trim() !== "" ? (
-              <p>{listing.description}</p>
-            ) : (
-              <p>No description yet.</p>
-            )}
-          </section>
-        </>
-      ) : null}
-    </>
+          {listing.hours.length > 0 ? (
+            <section>
+              <h2>Hours</h2>
+              <ul className="hours-list">
+                {listing.hours.map((line) => (
+                  <li key={line.label}>
+                    <span>{line.label}</span>
+                    <span>{line.value}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {listing.address.length > 0 ? (
+            <section>
+              <h2>Address</h2>
+              <address>
+                {listing.address.map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </address>
+            </section>
+          ) : null}
+        </div>
+
+        <aside className="listing-aside">
+          <div className="panel">
+            <h2>Contact</h2>
+            <dl className="contact-dl">
+              {listing.phone !== null ? (
+                <>
+                  <dt>Phone</dt>
+                  <dd>
+                    <a href={`tel:${listing.phone}`}>{listing.phone}</a>
+                  </dd>
+                </>
+              ) : null}
+              {listing.website !== null ? (
+                <>
+                  <dt>Website</dt>
+                  <dd>
+                    <a href={listing.website} rel="nofollow noopener">
+                      {listing.website}
+                    </a>
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+          </div>
+        </aside>
+      </div>
+    </main>
   );
 }
