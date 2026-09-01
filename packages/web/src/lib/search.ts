@@ -6,7 +6,7 @@ interface SearchRow {
   slug: string;
   name: string;
   locality: string | null;
-  status: "unclaimed" | "claimed" | "suspended";
+  status: string | null;
   listing_tier: string | null;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
@@ -18,41 +18,21 @@ export interface SearchResult {
   readonly slug: string;
   readonly name: string;
   readonly locality: string | null;
-  readonly status: "unclaimed" | "claimed" | "suspended";
+  readonly listingStatus: string | null;
   readonly entitlementStatus: EntitlementStatus;
   readonly tier: string | null;
   readonly categories: readonly string[];
-  /** Category slug to route the detail link through, or null if uncategorised. */
   readonly categorySlug: string | null;
 }
 
 export interface SearchParams {
   readonly q: string | null;
-  /** Anchor coordinates, already parsed. `near` is `lat,lon` only - see near.ts. */
   readonly near: { readonly lat: number; readonly lon: number } | null;
   readonly radiusKm: number;
 }
 
-/** Cap on returned rows - a guardrail, not pagination (there is no offset). */
 const MAX_RESULTS = 100;
 
-/**
- * Full-text and/or radius search over published listings for this tenant.
- *
- * Text: `search_tsv @@ websearch_to_tsquery('simple', q)` against the existing
- * generated column (0006_listings), ranked by `ts_rank`. The column is built
- * with the `'simple'` config, so matching is whole-word and unstemmed.
- *
- * Location: `near` is coordinates (`lat,lon`) only - OSDS ships no geocoder.
- * Results are filtered with `ST_DWithin` on the existing `geog` column and
- * ordered by distance.
- *
- * With both, rows must satisfy both and are ordered by rank then distance.
- * With neither, returns `[]` without touching `listings` - no full scan.
- *
- * Same tenancy pattern as the other lib functions: one transaction that sets
- * `app.tenant_id` first, so RLS is enforced for `osds_app`.
- */
 export async function getSearchResults(
   tenantId: string,
   { q, near, radiusKm }: SearchParams,
@@ -102,7 +82,6 @@ export async function getSearchResults(
         from listings l
         cross join anchor
         left join lateral (
-          -- current entitlement; matches the pick used by category.ts / listing.ts
           select e.status, e.tier
           from entitlements e
           where e.tenant_id = l.tenant_id and e.listing_id = l.id
@@ -141,7 +120,7 @@ export async function getSearchResults(
     slug: r.slug,
     name: r.name,
     locality: r.locality,
-    status: r.status,
+    listingStatus: r.status,
     entitlementStatus: r.entitlement_status ?? "none",
     tier: r.entitlement_tier ?? r.listing_tier,
     categories: r.category_names ?? [],

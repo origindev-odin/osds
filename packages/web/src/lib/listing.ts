@@ -4,8 +4,9 @@ import { getDb } from "./db";
 
 interface ListingRow {
   name: string;
+  slug: string;
+  status: string | null;
   description: string | null;
-  status: "unclaimed" | "claimed" | "suspended";
   listing_tier: string | null;
   address_line1: string | null;
   address_line2: string | null;
@@ -14,37 +15,49 @@ interface ListingRow {
   postal_code: string | null;
   country: string | null;
   contact_phone_e164: string | null;
-  contact_email: string | null;
   contact_website: string | null;
+  media: unknown;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
   category_names: string[] | null;
 }
 
+export interface ListingMedia {
+  readonly logo: string | null;
+  readonly cover: string | null;
+  readonly gallery: readonly string[];
+}
+
 export interface ListingView {
   readonly name: string;
+  readonly slug: string;
+  readonly listingStatus: string | null;
   readonly description: string | null;
-  readonly status: "unclaimed" | "claimed" | "suspended";
   readonly categoryNames: readonly string[];
   readonly address: readonly string[];
+  readonly locality: string | null;
   readonly phone: string | null;
-  readonly email: string | null;
   readonly website: string | null;
-  /** For the §6.5 resolver; `none` when the listing has no entitlement row. */
+  readonly media: ListingMedia;
   readonly entitlementStatus: EntitlementStatus;
-  /** Tier name to show *if* the resolver says the badge is visible. */
   readonly tier: string | null;
 }
 
-/**
- * The one published listing at `/{categorySlug}/{listingSlug}` for this tenant,
- * or null (route to a 404) when it does not exist, is not in that category, or
- * is not `visibility = 'published'`.
- *
- * The whole read runs in one transaction that first sets `app.tenant_id`
- * (transaction-local), so RLS on listings / listing_categories / categories /
- * entitlements is enforced for the `osds_app` role.
- */
+function parseMedia(raw: unknown): ListingMedia {
+  if (raw === null || typeof raw !== "object") {
+    return { logo: null, cover: null, gallery: [] };
+  }
+  const rec = raw as Record<string, unknown>;
+  const gallery = Array.isArray(rec.gallery)
+    ? rec.gallery.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    logo: typeof rec.logo === "string" ? rec.logo : null,
+    cover: typeof rec.cover === "string" ? rec.cover : null,
+    gallery,
+  };
+}
+
 export async function getPublishedListing(
   tenantId: string,
   categorySlug: string,
@@ -58,8 +71,9 @@ export async function getPublishedListing(
       const { rows } = await sql<ListingRow>`
         select
           l.name,
-          l.description,
+          l.slug,
           l.status,
+          l.description,
           l.tier             as listing_tier,
           l.address_line1,
           l.address_line2,
@@ -68,8 +82,8 @@ export async function getPublishedListing(
           l.postal_code,
           l.country,
           l.contact_phone_e164,
-          l.contact_email,
           l.contact_website,
+          l.media,
           ent.status         as entitlement_status,
           ent.tier           as entitlement_tier,
           cats.names         as category_names
@@ -88,9 +102,6 @@ export async function getPublishedListing(
           where x.tenant_id = l.tenant_id and x.listing_id = l.id
         ) cats on true
         left join lateral (
-          -- The listing's current entitlement. The partial unique index allows
-          -- at most one non-terminal row; this ordering also picks sensibly if a
-          -- terminal (expired / canceled) row sits alongside it.
           select e.status, e.tier
           from entitlements e
           where e.tenant_id = l.tenant_id and e.listing_id = l.id
@@ -128,13 +139,15 @@ export async function getPublishedListing(
 
   return {
     name: row.name,
-    description: row.description !== null && row.description.trim() !== "" ? row.description : null,
-    status: row.status,
+    slug: row.slug,
+    listingStatus: row.status,
+    description: row.description,
     categoryNames: row.category_names ?? [],
     address,
+    locality: row.locality,
     phone: row.contact_phone_e164,
-    email: row.contact_email,
     website: row.contact_website,
+    media: parseMedia(row.media),
     entitlementStatus: row.entitlement_status ?? "none",
     tier: row.entitlement_tier ?? row.listing_tier,
   };
