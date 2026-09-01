@@ -2,109 +2,107 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { resolvePublicRender } from "@osds/core";
 import { FeaturedBand } from "../../components/featured-band";
-import { ListingTile, provenanceFromStatus } from "../../components/listing-tile";
-import { PublicShell } from "../../components/public-shell";
+import { ListingTile } from "../../components/listing-tile";
 import { getCategoryPage } from "../../lib/category";
-import { getPublicChrome } from "../../lib/chrome";
+import { firstValue, pageNumber } from "../../lib/query";
+import { resolveTenantId } from "../../lib/tenant";
 
-// Depends on the Host header and a per-request database read - never prerendered.
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 20;
 
 interface PageProps {
   params: Promise<{ category: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { category } = await params;
-  const chrome = await getPublicChrome();
-  if (chrome === null) return { title: "Directory" };
-  const page = await getCategoryPage(chrome.tenantId, category);
-  if (page === null) return { title: chrome.tenantName };
-  return { title: `${page.name} · ${chrome.tenantName}` };
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const page = pageNumber(firstValue(params["page"]));
+  if (page > 1) {
+    return { robots: { index: false, follow: true } };
+  }
+  return {};
 }
 
-export default async function CategoryPage({ params }: PageProps) {
+export default async function CategoryPage({ params, searchParams }: PageProps) {
   const { category } = await params;
+  const query = await searchParams;
+  const page = pageNumber(firstValue(query["page"]));
 
-  const chrome = await getPublicChrome();
-  if (chrome === null) notFound();
+  const tenantId = await resolveTenantId();
+  if (tenantId === null) notFound();
 
-  const page = await getCategoryPage(chrome.tenantId, category);
-  if (page === null) notFound();
+  const data = await getCategoryPage(tenantId, category);
+  if (data === null) notFound();
 
-  // §6.5: featured placement first, then the rest. `page.listings` is already
-  // name-ordered, so each group stays alphabetical. ListingTile calls the same
-  // resolver again for the badge. Featured is a heading + ordinary tiles.
-  const featured = page.listings.filter(
-    (listing) => resolvePublicRender(listing.entitlementStatus).featuredPlacement,
-  );
-  const rest = page.listings.filter(
-    (listing) => !resolvePublicRender(listing.entitlementStatus).featuredPlacement,
+  const isFeatured = (status: (typeof data.listings)[number]["entitlementStatus"]) =>
+    resolvePublicRender(status).featuredPlacement;
+
+  const featured = data.listings.filter((l) => isFeatured(l.entitlementStatus));
+  const rest = data.listings.filter((l) => !isFeatured(l.entitlementStatus));
+
+  const totalPages = Math.max(1, Math.ceil(rest.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const pageRest = rest.slice(start, start + PAGE_SIZE);
+
+  const tile = (listing: (typeof data.listings)[number]) => (
+    <ListingTile
+      key={listing.slug}
+      href={`/${category}/${listing.slug}`}
+      name={listing.name}
+      entitlementStatus={listing.entitlementStatus}
+      tier={listing.tier}
+      listingStatus={listing.listingStatus}
+      categories={listing.categories}
+      locality={listing.locality}
+    />
   );
 
   return (
-    <PublicShell
-      tenantName={chrome.tenantName}
-      categories={chrome.categories}
-      searchQuery={null}
-      wrapClassName="wrap"
-    >
-      <nav aria-label="Breadcrumb">
-        <ol className="breadcrumbs">
-          <li>
-            <a href="/">Home</a>
-          </li>
-          <li>{page.name}</li>
-        </ol>
-      </nav>
+    <>
+      <h1>
+        {data.name} <span className="result-count">({data.listings.length})</span>
+      </h1>
 
-      <h1>{page.name}</h1>
-      <p className="result-count" aria-live="polite">
-        {page.listings.length === 1 ? "1 listing" : `${page.listings.length} listings`}
-      </p>
+      {featured.length > 0 ? (
+        <FeaturedBand>
+          <ul className="listing-grid">{featured.map(tile)}</ul>
+        </FeaturedBand>
+      ) : null}
 
-      {page.listings.length === 0 ? (
+      {data.listings.length === 0 ? (
         <div className="empty-state">
-          <h2>Nothing published here yet.</h2>
-          <p>Published listings in {page.name} will appear here.</p>
+          <p>No listings yet in this category.</p>
         </div>
       ) : (
         <>
-          <FeaturedBand
-            listings={featured.map((listing) => ({
-              href: `/${category}/${listing.slug}`,
-              name: listing.name,
-              entitlementStatus: listing.entitlementStatus,
-              tier: listing.tier,
-              categories: [page.name],
-              locality: listing.locality,
-              provenance: provenanceFromStatus(listing.status),
-              headingLevel: 3 as const,
-            }))}
-          />
-          {rest.length > 0 ? (
-            <>
-              <h2 className="organic-heading">All {page.name}</h2>
-              <ul className="listing-grid">
-                {rest.map((listing) => (
-                  <li key={listing.slug}>
-                    <ListingTile
-                      href={`/${category}/${listing.slug}`}
-                      name={listing.name}
-                      entitlementStatus={listing.entitlementStatus}
-                      tier={listing.tier}
-                      categories={[page.name]}
-                      locality={listing.locality}
-                      provenance={provenanceFromStatus(listing.status)}
-                      headingLevel={3}
-                    />
+          {pageRest.length > 0 ? (
+            <ul className="listing-grid">{pageRest.map(tile)}</ul>
+          ) : featured.length === 0 ? (
+            <div className="empty-state">
+              <p>No listings yet in this category.</p>
+            </div>
+          ) : null}
+
+          {totalPages > 1 ? (
+            <nav aria-label="Pagination">
+              <ul className="pagination">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                  <li key={n}>
+                    {n === safePage ? (
+                      <span aria-current="page">{n}</span>
+                    ) : (
+                      <a href={n === 1 ? `/${category}` : `/${category}?page=${n}`}>{n}</a>
+                    )}
                   </li>
                 ))}
               </ul>
-            </>
+            </nav>
           ) : null}
         </>
       )}
-    </PublicShell>
+    </>
   );
 }

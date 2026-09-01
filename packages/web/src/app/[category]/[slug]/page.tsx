@@ -1,163 +1,105 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { resolvePublicRender } from "@osds/core";
-import { provenanceFromStatus } from "../../../components/listing-tile";
-import { PublicShell } from "../../../components/public-shell";
-import { getPublicChrome } from "../../../lib/chrome";
+import { provenanceLine } from "../../../lib/provenance";
 import { getPublishedListing } from "../../../lib/listing";
+import { resolveTenantId } from "../../../lib/tenant";
 
-// Depends on the Host header and a per-request database read - never prerendered.
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ category: string; slug: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { category, slug } = await params;
-  const chrome = await getPublicChrome();
-  if (chrome === null) return { title: "Directory" };
-  const listing = await getPublishedListing(chrome.tenantId, category, slug);
-  if (listing === null) return { title: chrome.tenantName };
-  return { title: `${listing.name} · ${chrome.tenantName}` };
-}
-
 export default async function ListingPage({ params }: PageProps) {
   const { category, slug } = await params;
 
-  const chrome = await getPublicChrome();
-  if (chrome === null) notFound();
+  const tenantId = await resolveTenantId();
+  if (tenantId === null) notFound();
 
-  const listing = await getPublishedListing(chrome.tenantId, category, slug);
+  const listing = await getPublishedListing(tenantId, category, slug);
   if (listing === null) notFound();
 
-  // §6.5: the resolver owns badge and perk level. We do not re-derive those
-  // from entitlement fields, and we never set tier/status.
   const render = resolvePublicRender(listing.entitlementStatus);
-  const fullPerks = render.perks === "full";
   const tierBadge = render.badge === "tier" ? listing.tier : null;
-  const provenance = provenanceFromStatus(listing.status);
-  const categoryLabel = listing.categoryNames[0] ?? category;
+  const fullPerks = render.perks === "full";
+  const gallerySlots = [0, 1, 2, 3];
 
   return (
-    <PublicShell
-      tenantName={chrome.tenantName}
-      categories={chrome.categories}
-      searchQuery={null}
-      wrapClassName="wrap listing-layout"
-    >
-      <div>
-        <nav aria-label="Breadcrumb">
-          <ol className="breadcrumbs">
-            <li>
-              <a href="/">Home</a>
-            </li>
-            <li>
-              <a href={`/${category}`}>{categoryLabel}</a>
-            </li>
-            <li>{listing.name}</li>
-          </ol>
-        </nav>
+    <>
+      <nav aria-label="Breadcrumb">
+        <ol className="breadcrumbs">
+          <li>
+            <a href="/">Home</a>
+          </li>
+          <li>
+            <a href={`/${category}`}>{listing.categoryNames[0] ?? category}</a>
+          </li>
+          <li>{listing.name}</li>
+        </ol>
+      </nav>
 
-        {fullPerks ? (
-          <div className="hero-ph" role="img" aria-label="Cover image placeholder">
-            HERO
-          </div>
-        ) : null}
+      <h1>{listing.name}</h1>
+      {tierBadge !== null ? <p className="badge-row"><span className="tier-badge">{tierBadge}</span></p> : null}
+      <p className="trust">{provenanceLine(listing.listingStatus)}</p>
+      {listing.categoryNames.length > 0 || listing.locality !== null ? (
+        <p className="meta">
+          {[listing.categoryNames.join(", "), listing.locality].filter(Boolean).join(" · ")}
+        </p>
+      ) : null}
 
-        <header className="listing-identity">
-          <div className="name-row">
-            <h1>{listing.name}</h1>
-            {tierBadge !== null ? (
-              <span className="badge-row">
-                <span className="tier-badge">{tierBadge}</span>
-              </span>
-            ) : null}
-          </div>
-          {listing.categoryNames.length > 0 ? (
-            <p className="meta">
-              <a href={`/${category}`}>{listing.categoryNames.join(", ")}</a>
-            </p>
-          ) : null}
-          {provenance !== null ? <p className="trust">{provenance}</p> : null}
-        </header>
+      {fullPerks ? (
+        <div className="hero-ph" aria-hidden="true">
+          Hero
+        </div>
+      ) : null}
 
-        {listing.address.length > 0 ||
-        (fullPerks && (listing.email !== null || listing.website !== null || listing.phone !== null)) ? (
-          <dl className="contact-dl">
-            {listing.address.length > 0 ? (
-              <>
-                <dt>Address</dt>
-                <dd>
-                  {listing.address.map((line) => (
-                    <div key={line}>{line}</div>
-                  ))}
-                </dd>
-              </>
-            ) : null}
-            {fullPerks && listing.email !== null ? (
-              <>
-                <dt>Email</dt>
-                <dd>
-                  <a href={`mailto:${listing.email}`}>{listing.email}</a>
-                </dd>
-              </>
-            ) : null}
-            {fullPerks && listing.website !== null ? (
-              <>
-                <dt>Website</dt>
-                <dd>
-                  <a href={listing.website} rel="nofollow noopener">
-                    {listing.website}
-                  </a>
-                </dd>
-              </>
-            ) : null}
-            {fullPerks && listing.phone !== null ? (
-              <>
-                <dt>Phone</dt>
-                <dd>
-                  <a href={`tel:${listing.phone}`}>{listing.phone}</a>
-                </dd>
-              </>
-            ) : null}
-          </dl>
-        ) : null}
+      {listing.address.length > 0 ? (
+        <address>
+          {listing.address.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </address>
+      ) : null}
 
-        {fullPerks && listing.description !== null ? (
-          <div className="prose">
-            <p>{listing.description}</p>
-          </div>
-        ) : null}
+      {listing.phone !== null ? (
+        <p>
+          <a href={`tel:${listing.phone}`}>{listing.phone}</a>
+        </p>
+      ) : null}
 
-        {fullPerks ? (
-          <section className="photo-gallery-block" aria-labelledby="gallery-heading">
-            <h2 id="gallery-heading">Photos</h2>
+      {listing.website !== null ? (
+        <p>
+          <a href={listing.website} rel="nofollow noopener noreferrer">
+            {listing.website}
+          </a>
+        </p>
+      ) : null}
+
+      {fullPerks ? (
+        <>
+          <section className="photo-gallery-block">
+            <h2>Photos</h2>
             <ul className="photo-gallery">
-              <li>
-                <div className="photo-ph" aria-hidden="true">
-                  PHOTO
-                </div>
-              </li>
-              <li>
-                <div className="photo-ph" aria-hidden="true">
-                  PHOTO
-                </div>
-              </li>
-              <li>
-                <div className="photo-ph" aria-hidden="true">
-                  PHOTO
-                </div>
-              </li>
-              <li>
-                <div className="photo-ph" aria-hidden="true">
-                  PHOTO
-                </div>
-              </li>
+              {gallerySlots.map((_, i) => (
+                <li key={i}>
+                  <div className="photo-ph" aria-hidden="true">
+                    Photo
+                  </div>
+                </li>
+              ))}
             </ul>
           </section>
-        ) : null}
-      </div>
-    </PublicShell>
+
+          <section>
+            <h2>Description / About</h2>
+            {listing.description !== null && listing.description.trim() !== "" ? (
+              <p>{listing.description}</p>
+            ) : (
+              <p>No description yet.</p>
+            )}
+          </section>
+        </>
+      ) : null}
+    </>
   );
 }
