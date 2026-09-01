@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ListingTile } from "../../components/listing-tile";
+import { SearchForm } from "../../components/search-form";
+import { getHomePage } from "../../lib/home";
 import { parseNear } from "../../lib/near";
 import { firstValue } from "../../lib/query";
 import { getSearchResults } from "../../lib/search";
 import { resolveTenantId } from "../../lib/tenant";
 
+// Reads the query string and the database per request - never prerendered.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -25,10 +28,16 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const tenantId = await resolveTenantId();
   if (tenantId === null) notFound();
 
+  const home = await getHomePage(tenantId);
+  if (home === null) notFound();
+
+  // An invalid `near` is a 400 from middleware.ts before we get here; treat any
+  // that slips through as no location filter.
   const parsed = parseNear(near);
   const coords = parsed.kind === "coords" ? { lat: parsed.lat, lon: parsed.lon } : null;
 
-  const hasText = q !== null && q.trim() !== "";
+  const qValue = q ?? "";
+  const hasText = qValue.trim() !== "";
   const searched = hasText || coords !== null;
 
   const parsedRadius = radiusRaw === null ? NaN : Number(radiusRaw);
@@ -39,66 +48,45 @@ export default async function SearchPage({ searchParams }: PageProps) {
     : [];
 
   return (
-    <>
+    <main id="main" className="wrap site-main">
       <h1>Search</h1>
 
-      <form className="search-hero" method="get" action="/search" role="search">
-        <div className="search-row">
-          <label className="visually-hidden" htmlFor="search-q">
-            Keywords
-          </label>
-          <input id="search-q" type="search" name="q" defaultValue={q ?? ""} />
-          <button type="submit">Search</button>
-        </div>
-
-        <details className="advanced" {...(near !== null && near !== "" ? { open: true } : {})}>
-          <summary>Advanced</summary>
-          <div className="advanced-grid">
-            <p className="field">
-              <label htmlFor="search-near">Coordinates (lat,lon)</label>
-              <input
-                id="search-near"
-                type="text"
-                name="near"
-                defaultValue={near ?? ""}
-                autoComplete="off"
-              />
-              <span className="hint">Coordinates only. A city or ZIP will fail.</span>
-            </p>
-            <p className="field">
-              <label htmlFor="search-radius">Radius km</label>
-              <input
-                id="search-radius"
-                type="text"
-                name="radius_km"
-                defaultValue={radiusRaw ?? "25"}
-                inputMode="decimal"
-              />
-            </p>
-          </div>
-        </details>
-      </form>
+      <SearchForm
+        q={qValue}
+        near={near ?? ""}
+        radiusKm={radiusRaw ?? ""}
+        advancedOpen={near !== null && near !== ""}
+        nearInvalid={false}
+        idPrefix=""
+      />
 
       {!searched ? (
         <div className="empty-state">
-          <p>Enter keywords or coordinates to search. The directory is not listed here in full.</p>
-          <p>
-            <a href="/">Back home</a>
-          </p>
+          <p className="result-count">0 results. Enter a search term or coordinates to find listings.</p>
+          <p>This page does not list the directory. Start from:</p>
+          <ul>
+            <li>
+              <a href="/">Home</a> — browse categories
+            </li>
+            {home.categories.map((category) => (
+              <li key={category.slug}>
+                <a href={`/${category.slug}`}>{category.name}</a>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : results.length === 0 ? (
         <div className="empty-state">
-          <p className="result-count" aria-live="polite">
-            0 results
-          </p>
+          <p className="result-count">No results.</p>
           <p>
-            <a href="/">Home</a>
+            <a href="/">Back to home</a>
           </p>
         </div>
       ) : (
         <>
-          <p className="result-count" aria-live="polite">
-            {results.length} result{results.length === 1 ? "" : "s"}
+          <p className="result-count">
+            {results.length === 1 ? "1 result" : `${results.length} results`}
+            {hasText ? ` for “${qValue.trim()}”` : ""}
           </p>
           <ul className="listing-grid">
             {results.map((result) => (
@@ -112,14 +100,15 @@ export default async function SearchPage({ searchParams }: PageProps) {
                 name={result.name}
                 entitlementStatus={result.entitlementStatus}
                 tier={result.tier}
-                listingStatus={result.listingStatus}
-                categories={result.categories}
+                categoryName={result.categories[0] ?? null}
                 locality={result.locality}
+                provenance={result.provenance}
+                hasLogo={result.hasLogo}
               />
             ))}
           </ul>
         </>
       )}
-    </>
+    </main>
   );
 }
