@@ -1,32 +1,64 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { resolveTenantId } from "../lib/tenant";
-import { getHomePage } from "../lib/home";
+import { PublicShell } from "../components/public-shell";
+import { getPublicChrome } from "../lib/chrome";
 
 // Depends on the Host header and a per-request database read - never prerendered.
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const tenantId = await resolveTenantId();
-  if (tenantId === null) notFound();
+export async function generateMetadata(): Promise<Metadata> {
+  const chrome = await getPublicChrome();
+  if (chrome === null) return { title: "Directory" };
+  return { title: chrome.tenantName };
+}
 
-  const home = await getHomePage(tenantId);
-  if (home === null) notFound();
+export default async function HomePage() {
+  const chrome = await getPublicChrome();
+  if (chrome === null) notFound();
 
   return (
-    <main>
-      <h1>{home.tenantName}</h1>
+    <PublicShell
+      tenantName={chrome.tenantName}
+      categories={chrome.categories}
+      searchQuery={null}
+      wrapClassName="wrap"
+    >
+      <h1>{chrome.tenantName}</h1>
 
-      {home.categories.length === 0 ? (
-        <p>No categories.</p>
+      <form className="search-hero" method="get" action="/search" role="search">
+        <div className="search-row">
+          <label className="visually-hidden" htmlFor="q-home">
+            Keywords
+          </label>
+          <input
+            id="q-home"
+            type="search"
+            name="q"
+            placeholder="Plumber, cafe, bookshop…"
+          />
+          <button type="submit">Search</button>
+        </div>
+      </form>
+
+      {chrome.categories.length === 0 ? (
+        <div className="empty-state">
+          <h2>This directory is being filled.</h2>
+          <p>
+            {chrome.tenantName} will list businesses as they are published. There is
+            nothing to browse yet.
+          </p>
+        </div>
       ) : (
-        <ul>
-          {home.categories.map((category) => (
+        <ul className="chip-list">
+          {chrome.categories.map((category) => (
             <li key={category.slug}>
-              <a href={`/${category.slug}`}>{category.name}</a> ({category.publishedCount})
+              <a className="chip" href={`/${category.slug}`}>
+                {category.name} <span className="count">{category.publishedCount}</span>
+              </a>
             </li>
           ))}
         </ul>
       )}
-    </main>
+    </PublicShell>
   );
 }

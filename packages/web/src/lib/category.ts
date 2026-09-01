@@ -5,6 +5,8 @@ import { getDb } from "./db";
 interface ListingRow {
   slug: string;
   name: string;
+  locality: string | null;
+  status: "unclaimed" | "claimed" | "suspended";
   listing_tier: string | null;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
@@ -13,6 +15,8 @@ interface ListingRow {
 export interface CategoryListing {
   readonly slug: string;
   readonly name: string;
+  readonly locality: string | null;
+  readonly status: "unclaimed" | "claimed" | "suspended";
   /** For the §6.5 resolver; `none` when the listing has no entitlement row. */
   readonly entitlementStatus: EntitlementStatus;
   /** Tier name to show *if* the resolver says the badge is visible. */
@@ -58,6 +62,8 @@ export async function getCategoryPage(
         select
           l.slug,
           l.name,
+          l.locality,
+          l.status,
           l.tier         as listing_tier,
           ent.status     as entitlement_status,
           ent.tier       as entitlement_tier
@@ -98,6 +104,8 @@ export async function getCategoryPage(
         listings: rows.map((r) => ({
           slug: r.slug,
           name: r.name,
+          locality: r.locality,
+          status: r.status,
           entitlementStatus: r.entitlement_status ?? "none",
           tier: r.entitlement_tier ?? r.listing_tier,
         })),

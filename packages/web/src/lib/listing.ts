@@ -4,6 +4,8 @@ import { getDb } from "./db";
 
 interface ListingRow {
   name: string;
+  description: string | null;
+  status: "unclaimed" | "claimed" | "suspended";
   listing_tier: string | null;
   address_line1: string | null;
   address_line2: string | null;
@@ -21,6 +23,8 @@ interface ListingRow {
 
 export interface ListingView {
   readonly name: string;
+  readonly description: string | null;
+  readonly status: "unclaimed" | "claimed" | "suspended";
   readonly categoryNames: readonly string[];
   readonly address: readonly string[];
   readonly phone: string | null;
@@ -54,6 +58,8 @@ export async function getPublishedListing(
       const { rows } = await sql<ListingRow>`
         select
           l.name,
+          l.description,
+          l.status,
           l.tier             as listing_tier,
           l.address_line1,
           l.address_line2,
@@ -122,6 +128,8 @@ export async function getPublishedListing(
 
   return {
     name: row.name,
+    description: row.description !== null && row.description.trim() !== "" ? row.description : null,
+    status: row.status,
     categoryNames: row.category_names ?? [],
     address,
     phone: row.contact_phone_e164,
