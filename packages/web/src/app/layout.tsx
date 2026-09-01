@@ -1,13 +1,22 @@
 import type { ReactNode } from "react";
+import "./public.css";
 
 export const metadata = {
-  title: "OSDS",
+  title: {
+    default: "Directory",
+    template: "%s",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <a className="skip-link" href="#main">
+          Skip to content
+        </a>
+        {children}
+      </body>
     </html>
   );
 }
