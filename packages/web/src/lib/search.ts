@@ -6,6 +6,7 @@ interface SearchRow {
   slug: string;
   name: string;
   locality: string | null;
+  status: "unclaimed" | "claimed" | "suspended";
   listing_tier: string | null;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
@@ -17,6 +18,7 @@ export interface SearchResult {
   readonly slug: string;
   readonly name: string;
   readonly locality: string | null;
+  readonly status: "unclaimed" | "claimed" | "suspended";
   readonly entitlementStatus: EntitlementStatus;
   readonly tier: string | null;
   readonly categories: readonly string[];
@@ -91,6 +93,7 @@ export async function getSearchResults(
           l.slug,
           l.name,
           l.locality,
+          l.status,
           l.tier      as listing_tier,
           ent.status  as entitlement_status,
           ent.tier    as entitlement_tier,
@@ -138,6 +141,7 @@ export async function getSearchResults(
     slug: r.slug,
     name: r.name,
     locality: r.locality,
+    status: r.status,
     entitlementStatus: r.entitlement_status ?? "none",
     tier: r.entitlement_tier ?? r.listing_tier,
     categories: r.category_names ?? [],
