@@ -19,6 +19,7 @@ interface ListingRow {
   postal_code: string | null;
   country: string | null;
   contact_phone_e164: string | null;
+  contact_email: string | null;
   contact_website: string | null;
   attributes: unknown;
   media: unknown;
@@ -39,23 +40,13 @@ export interface ListingView {
   readonly hours: readonly HoursLine[];
   readonly hasLogo: boolean;
   readonly provenance: ProvenanceLabel;
-  /** For the §6.5 resolver; `none` when the listing has no entitlement row. */
+  readonly listingStatus: ListingClaimStatus;
+  /** Selected for claim masking only. Never print raw on public pages. */
+  readonly contactEmail: string | null;
   readonly entitlementStatus: EntitlementStatus;
-  /** Tier name to show *if* the resolver says the badge is visible. */
   readonly tier: string | null;
 }
 
-/**
- * The one published listing at `/{categorySlug}/{listingSlug}` for this tenant,
- * or null (route to a 404) when it does not exist, is not in that category, or
- * is not `visibility = 'published'`.
- *
- * The whole read runs in one transaction that first sets `app.tenant_id`
- * (transaction-local), so RLS on listings / listing_categories / categories /
- * entitlements is enforced for the `osds_app` role.
- *
- * Contact email is selected nowhere on purpose: public pages must not show it.
- */
 export async function getPublishedListing(
   tenantId: string,
   categorySlug: string,
@@ -81,6 +72,7 @@ export async function getPublishedListing(
           l.postal_code,
           l.country,
           l.contact_phone_e164,
+          l.contact_email,
           l.contact_website,
           l.attributes,
           l.media,
@@ -102,9 +94,6 @@ export async function getPublishedListing(
           where x.tenant_id = l.tenant_id and x.listing_id = l.id
         ) cats on true
         left join lateral (
-          -- The listing's current entitlement. The partial unique index allows
-          -- at most one non-terminal row; this ordering also picks sensibly if a
-          -- terminal (expired / canceled) row sits alongside it.
           select e.status, e.tier
           from entitlements e
           where e.tenant_id = l.tenant_id and e.listing_id = l.id
@@ -152,6 +141,8 @@ export async function getPublishedListing(
     hours: hoursLines(row.attributes),
     hasLogo: listingHasLogo(row.media),
     provenance: provenanceLabel(row.status, row.owner_user_id),
+    listingStatus: row.status,
+    contactEmail: row.contact_email,
     entitlementStatus: row.entitlement_status ?? "none",
     tier: row.entitlement_tier ?? row.listing_tier,
   };
