@@ -2,9 +2,6 @@ import { escapeHtml } from "./html";
 
 export interface Search400Chrome {
   readonly tenantName: string;
-  readonly tagline: string;
-  readonly origin: string;
-  readonly year: number;
   readonly categories: readonly { readonly slug: string; readonly name: string }[];
 }
 
@@ -14,16 +11,13 @@ export function search400Html(
   css: string,
 ): string {
   const tenant = escapeHtml(chrome.tenantName);
-  const tagline = escapeHtml(chrome.tagline);
-  const origin = escapeHtml(chrome.origin);
-  const year = String(chrome.year);
   const q = escapeHtml(input.q);
   const near = escapeHtml(input.near);
   const radius = escapeHtml(input.radiusKm === "" ? "25" : input.radiusKm);
   const nearAttr = escapeHtml(input.near);
   const footerCats =
     chrome.categories.length === 0
-      ? `<p class="footer-tag">No published categories yet.</p>`
+      ? ""
       : `<ul class="footer-cats">${chrome.categories
           .map(
             (c) =>
@@ -48,7 +42,7 @@ export function search400Html(
       <div class="header-tools">
         <form class="compact-search" method="get" action="/search">
           <label for="q-header">Search</label>
-          <input id="q-header" type="search" name="q" value="${q}" placeholder="Search listings">
+          <input id="q-header" type="search" name="q" value="${q}">
           <button type="submit">Search</button>
         </form>
         <nav aria-label="Account">
@@ -57,8 +51,7 @@ export function search400Html(
       </div>
     </div>
   </header>
-  <main id="main" class="site-main">
-    <div class="wrap">
+  <main id="main" class="wrap site-main">
     <h1>That location is not valid</h1>
     <div class="alert" role="alert">
       <strong>near must be coordinates.</strong>
@@ -90,33 +83,11 @@ export function search400Html(
       </details>
       <p><button class="btn btn-primary" type="submit">Search</button></p>
     </form>
-    </div>
   </main>
   <footer class="site-footer">
-    <div class="wrap footer-grid">
-      <div>
-        <p class="footer-identity">${tenant}</p>
-        <p class="footer-tag">${tagline}</p>
-      </div>
-      <div>
-        <h2 class="footer-heading">Categories</h2>
-        ${footerCats}
-      </div>
-      <div>
-        <h2 class="footer-heading">About</h2>
-        <ul class="footer-nav">
-          <li><a href="/about">About</a></li>
-          <li><a href="/privacy">Privacy</a></li>
-          <li><a href="/terms">Terms</a></li>
-        </ul>
-      </div>
-      <div>
-        <h2 class="footer-heading">Share</h2>
-        <p class="footer-share">${origin === "" ? "/" : origin}</p>
-      </div>
-    </div>
-    <div class="wrap footer-sub">
-      <p>© ${year} ${tenant} · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
+    <div class="wrap">
+      <p class="footer-identity">${tenant}</p>
+      ${footerCats}
     </div>
   </footer>
 </body>
