@@ -45,9 +45,6 @@ export async function GET(request: Request): Promise<NextResponse> {
   const html = search400Html(
     {
       tenantName: home?.tenantName ?? "Directory",
-      tagline: "Local listings.",
-      origin: url.origin,
-      year: new Date().getUTCFullYear(),
       categories: home?.categories ?? [],
     },
     {
