@@ -1,11 +1,17 @@
 import { sql } from "@osds/db";
 import type { EntitlementStatus } from "@osds/core";
 import { getDb } from "./db";
+import { listingHasLogo } from "./media";
+import { provenanceLabel } from "./provenance";
+import type { ListingClaimStatus, ProvenanceLabel } from "./provenance";
 
 interface SearchRow {
   slug: string;
   name: string;
   locality: string | null;
+  status: ListingClaimStatus;
+  owner_user_id: string | null;
+  media: unknown;
   listing_tier: string | null;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
@@ -22,6 +28,8 @@ export interface SearchResult {
   readonly categories: readonly string[];
   /** Category slug to route the detail link through, or null if uncategorised. */
   readonly categorySlug: string | null;
+  readonly provenance: ProvenanceLabel;
+  readonly hasLogo: boolean;
 }
 
 export interface SearchParams {
@@ -91,6 +99,9 @@ export async function getSearchResults(
           l.slug,
           l.name,
           l.locality,
+          l.status,
+          l.owner_user_id,
+          l.media,
           l.tier      as listing_tier,
           ent.status  as entitlement_status,
           ent.tier    as entitlement_tier,
@@ -142,5 +153,7 @@ export async function getSearchResults(
     tier: r.entitlement_tier ?? r.listing_tier,
     categories: r.category_names ?? [],
     categorySlug: r.category_slugs?.[0] ?? null,
+    provenance: provenanceLabel(r.status, r.owner_user_id),
+    hasLogo: listingHasLogo(r.media),
   }));
 }

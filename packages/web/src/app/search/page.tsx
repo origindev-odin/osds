@@ -1,19 +1,22 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { resolveTenantId } from "../../lib/tenant";
-import { getSearchResults } from "../../lib/search";
+import { ListingTile } from "../../components/listing-tile";
+import { SearchForm } from "../../components/search-form";
+import { getHomePage } from "../../lib/home";
 import { parseNear } from "../../lib/near";
-import { ListingRow } from "../../components/listing-row";
+import { firstValue } from "../../lib/query";
+import { getSearchResults } from "../../lib/search";
+import { resolveTenantId } from "../../lib/tenant";
 
 // Reads the query string and the database per request - never prerendered.
 export const dynamic = "force-dynamic";
 
+export const metadata: Metadata = {
+  robots: { index: false, follow: true },
+};
+
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
-
-function firstValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
 }
 
 export default async function SearchPage({ searchParams }: PageProps) {
@@ -25,12 +28,16 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const tenantId = await resolveTenantId();
   if (tenantId === null) notFound();
 
+  const home = await getHomePage(tenantId);
+  if (home === null) notFound();
+
   // An invalid `near` is a 400 from middleware.ts before we get here; treat any
   // that slips through as no location filter.
   const parsed = parseNear(near);
   const coords = parsed.kind === "coords" ? { lat: parsed.lat, lon: parsed.lon } : null;
 
-  const hasText = q !== null && q.trim() !== "";
+  const qValue = q ?? "";
+  const hasText = qValue.trim() !== "";
   const searched = hasText || coords !== null;
 
   const parsedRadius = radiusRaw === null ? NaN : Number(radiusRaw);
@@ -41,52 +48,66 @@ export default async function SearchPage({ searchParams }: PageProps) {
     : [];
 
   return (
-    <main>
+    <main id="main" className="wrap site-main">
       <h1>Search</h1>
 
-      <form method="get" action="/search">
-        <p>
-          <label>
-            Keywords <input type="text" name="q" defaultValue={q ?? ""} />
-          </label>
-        </p>
-        <p>
-          <label>
-            Near (lat,lon){" "}
-            <input type="text" name="near" defaultValue={near ?? ""} />
-          </label>
-        </p>
-        <p>
-          <label>
-            Radius km{" "}
-            <input type="text" name="radius_km" defaultValue={radiusRaw ?? ""} />
-          </label>
-        </p>
-        <p>
-          <button type="submit">Search</button>
-        </p>
-      </form>
+      <SearchForm
+        q={qValue}
+        near={near ?? ""}
+        radiusKm={radiusRaw ?? ""}
+        advancedOpen={near !== null && near !== ""}
+        nearInvalid={false}
+        idPrefix=""
+      />
 
-      {!searched ? null : results.length === 0 ? (
-        <p>No results.</p>
+      {!searched ? (
+        <div className="empty-state">
+          <p className="result-count">0 results. Enter a search term or coordinates to find listings.</p>
+          <p>This page does not list the directory. Start from:</p>
+          <ul>
+            <li>
+              <a href="/">Home</a> — browse categories
+            </li>
+            {home.categories.map((category) => (
+              <li key={category.slug}>
+                <a href={`/${category.slug}`}>{category.name}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : results.length === 0 ? (
+        <div className="empty-state">
+          <p className="result-count">No results.</p>
+          <p>
+            <a href="/">Back to home</a>
+          </p>
+        </div>
       ) : (
-        <ul>
-          {results.map((result) => (
-            <ListingRow
-              key={result.slug}
-              href={
-                result.categorySlug !== null
-                  ? `/${result.categorySlug}/${result.slug}`
-                  : null
-              }
-              name={result.name}
-              entitlementStatus={result.entitlementStatus}
-              tier={result.tier}
-              categories={result.categories}
-              locality={result.locality}
-            />
-          ))}
-        </ul>
+        <>
+          <p className="result-count">
+            {results.length === 1 ? "1 result" : `${results.length} results`}
+            {hasText ? ` for “${qValue.trim()}”` : ""}
+          </p>
+          <ul className="listing-grid">
+            {results.map((result) => (
+              <ListingTile
+                key={result.slug}
+                href={
+                  result.categorySlug !== null
+                    ? `/${result.categorySlug}/${result.slug}`
+                    : null
+                }
+                name={result.name}
+                entitlementStatus={result.entitlementStatus}
+                tier={result.tier}
+                categoryName={result.categories[0] ?? null}
+                locality={result.locality}
+                provenance={result.provenance}
+                hasLogo={result.hasLogo}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </main>
   );

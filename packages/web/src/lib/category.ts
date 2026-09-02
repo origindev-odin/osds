@@ -1,10 +1,17 @@
 import { sql } from "@osds/db";
 import type { EntitlementStatus } from "@osds/core";
 import { getDb } from "./db";
+import { listingHasLogo } from "./media";
+import { provenanceLabel } from "./provenance";
+import type { ListingClaimStatus, ProvenanceLabel } from "./provenance";
 
 interface ListingRow {
   slug: string;
   name: string;
+  locality: string | null;
+  status: ListingClaimStatus;
+  owner_user_id: string | null;
+  media: unknown;
   listing_tier: string | null;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
@@ -13,10 +20,13 @@ interface ListingRow {
 export interface CategoryListing {
   readonly slug: string;
   readonly name: string;
+  readonly locality: string | null;
   /** For the §6.5 resolver; `none` when the listing has no entitlement row. */
   readonly entitlementStatus: EntitlementStatus;
   /** Tier name to show *if* the resolver says the badge is visible. */
   readonly tier: string | null;
+  readonly provenance: ProvenanceLabel;
+  readonly hasLogo: boolean;
 }
 
 export interface CategoryPage {
@@ -58,6 +68,10 @@ export async function getCategoryPage(
         select
           l.slug,
           l.name,
+          l.locality,
+          l.status,
+          l.owner_user_id,
+          l.media,
           l.tier         as listing_tier,
           ent.status     as entitlement_status,
           ent.tier       as entitlement_tier
@@ -98,8 +112,11 @@ export async function getCategoryPage(
         listings: rows.map((r) => ({
           slug: r.slug,
           name: r.name,
+          locality: r.locality,
           entitlementStatus: r.entitlement_status ?? "none",
           tier: r.entitlement_tier ?? r.listing_tier,
+          provenance: provenanceLabel(r.status, r.owner_user_id),
+          hasLogo: listingHasLogo(r.media),
         })),
       };
     });

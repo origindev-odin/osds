@@ -1,10 +1,17 @@
 import { sql } from "@osds/db";
 import type { EntitlementStatus } from "@osds/core";
 import { getDb } from "./db";
+import { hoursLines, type HoursLine } from "./hours";
+import { listingHasLogo } from "./media";
+import { provenanceLabel, type ListingClaimStatus, type ProvenanceLabel } from "./provenance";
 
 interface ListingRow {
   name: string;
+  route_category_name: string;
   listing_tier: string | null;
+  description: string | null;
+  status: ListingClaimStatus;
+  owner_user_id: string | null;
   address_line1: string | null;
   address_line2: string | null;
   locality: string | null;
@@ -12,8 +19,9 @@ interface ListingRow {
   postal_code: string | null;
   country: string | null;
   contact_phone_e164: string | null;
-  contact_email: string | null;
   contact_website: string | null;
+  attributes: unknown;
+  media: unknown;
   entitlement_status: EntitlementStatus | null;
   entitlement_tier: string | null;
   category_names: string[] | null;
@@ -21,11 +29,16 @@ interface ListingRow {
 
 export interface ListingView {
   readonly name: string;
+  readonly routeCategoryName: string;
   readonly categoryNames: readonly string[];
+  readonly locality: string | null;
   readonly address: readonly string[];
   readonly phone: string | null;
-  readonly email: string | null;
   readonly website: string | null;
+  readonly description: string | null;
+  readonly hours: readonly HoursLine[];
+  readonly hasLogo: boolean;
+  readonly provenance: ProvenanceLabel;
   /** For the §6.5 resolver; `none` when the listing has no entitlement row. */
   readonly entitlementStatus: EntitlementStatus;
   /** Tier name to show *if* the resolver says the badge is visible. */
@@ -40,6 +53,8 @@ export interface ListingView {
  * The whole read runs in one transaction that first sets `app.tenant_id`
  * (transaction-local), so RLS on listings / listing_categories / categories /
  * entitlements is enforced for the `osds_app` role.
+ *
+ * Contact email is selected nowhere on purpose: public pages must not show it.
  */
 export async function getPublishedListing(
   tenantId: string,
@@ -54,7 +69,11 @@ export async function getPublishedListing(
       const { rows } = await sql<ListingRow>`
         select
           l.name,
+          route_cat.name     as route_category_name,
           l.tier             as listing_tier,
+          l.description,
+          l.status,
+          l.owner_user_id,
           l.address_line1,
           l.address_line2,
           l.locality,
@@ -62,8 +81,9 @@ export async function getPublishedListing(
           l.postal_code,
           l.country,
           l.contact_phone_e164,
-          l.contact_email,
           l.contact_website,
+          l.attributes,
+          l.media,
           ent.status         as entitlement_status,
           ent.tier           as entitlement_tier,
           cats.names         as category_names
@@ -122,11 +142,16 @@ export async function getPublishedListing(
 
   return {
     name: row.name,
+    routeCategoryName: row.route_category_name,
     categoryNames: row.category_names ?? [],
+    locality: row.locality,
     address,
     phone: row.contact_phone_e164,
-    email: row.contact_email,
     website: row.contact_website,
+    description: row.description,
+    hours: hoursLines(row.attributes),
+    hasLogo: listingHasLogo(row.media),
+    provenance: provenanceLabel(row.status, row.owner_user_id),
     entitlementStatus: row.entitlement_status ?? "none",
     tier: row.entitlement_tier ?? row.listing_tier,
   };
